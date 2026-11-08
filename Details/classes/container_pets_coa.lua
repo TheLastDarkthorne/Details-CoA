@@ -232,6 +232,9 @@ function CoAPets.Reset()
 	wipe(CoAPets.Announced)
 	wipe(CoAPets.Unresolved)
 	CoAPets.UnresolvedCount = 0
+	if (CoAPets.PetLastCast) then
+		wipe(CoAPets.PetLastCast)
+	end
 end
 
 ---print the group-owned units Details couldn't find an owner for (slash command: /details coapets)
@@ -244,6 +247,139 @@ function CoAPets.PrintUnresolved()
 	for petGuid, info in pairs(CoAPets.Unresolved) do
 		print(info.name, petGuid, string.format("0x%X", info.flags))
 	end
+end
+
+------------------------------------------------------------------------------------------------
+--pet ability names
+--
+--Some CoA summons deal damage with a helper spell named after the creature itself: the Tentacle of
+--C'Thun channels Mental Assault (801151) and the damage ticks are spell 804999 "Tentacle of C'Thun".
+--Details then lists "Tentacle of C'Thun (Tentacle of C'Thun)". When a pet deals damage or heals with
+--a spell that has the pet's own name, show it under the ability the same pet cast last, and
+--remember that pairing (saved in _detalhes_global) for the next sessions.
+
+local GetSpellInfo = _G.GetSpellInfo
+local GetTime = _G.GetTime
+local gsub = string.gsub
+
+local PET_CAST_MEMORY = 20 --seconds a pet's last cast stays usable as the ability name
+local MAX_LOOKUPS = 30 --give up on a spell after this many hits without a usable cast
+
+--verified in the core: npc_ascension_cultist_summon casts MentalAssault, whose periodic trigger is 804999
+local knownHelperParents = {
+	[804999] = 801151, --Tentacle of C'Thun (damage tick) -> Mental Assault
+}
+
+--names that describe a mechanic rather than an ability a player would recognize
+local technicalNames = {"passive", "aura", "visual", "reticle", "proc", "trigger", "periodic", "dummy", "cosmetic", "placeholder", "immunity", "state", "scale", "scaling"}
+
+---@type table<guid, {spellId: number, time: number}>
+CoAPets.PetLastCast = {}
+---spell id -> nil (not checked yet), number of failed lookups, or true (decided)
+---@type table<number, number|boolean>
+CoAPets.HelperChecked = {}
+
+local getHelperParents = function()
+	local db = _G._detalhes_global
+	if (db) then
+		db.coa_pet_spell_parents = db.coa_pet_spell_parents or {}
+		return db.coa_pet_spell_parents
+	end
+end
+
+---return the id of the ability a helper spell should be shown as, or nil
+---@param spellId number
+---@return number?
+function CoAPets.GetHelperParent(spellId)
+	local saved = getHelperParents()
+	return knownHelperParents[spellId] or (saved and saved[spellId])
+end
+
+local isTechnicalName = function(spellName)
+	local lowerName = spellName:lower()
+	for i = 1, #technicalNames do
+		if (lowerName:find(technicalNames[i], 1, true)) then
+			return true
+		end
+	end
+	return false
+end
+
+---overwrite the spell cache entry of a helper spell with the name and icon of its ability
+---@param helperId number
+---@param parentId number
+local applyHelperName = function(helperId, parentId)
+	local parentName, _, parentIcon = GetSpellInfo(parentId)
+	if (parentName and GetSpellInfo(helperId) and Details.spellcache) then
+		rawset(Details.spellcache, helperId, {parentName, 1, parentIcon})
+	end
+end
+
+---the spell cache gets rebuilt when segments are cleared: put the helper names back
+function CoAPets.ApplyHelperNames()
+	for helperId, parentId in pairs(knownHelperParents) do
+		applyHelperName(helperId, parentId)
+	end
+	local saved = getHelperParents()
+	if (saved) then
+		for helperId, parentId in pairs(saved) do
+			applyHelperName(helperId, parentId)
+		end
+	end
+end
+
+---parser: a pet cast a spell (SPELL_CAST_SUCCESS)
+---@param petGuid guid
+---@param spellId number
+function CoAPets.OnPetCast(petGuid, spellId)
+	local lastCast = CoAPets.PetLastCast[petGuid]
+	if (lastCast) then
+		lastCast.spellId = spellId
+		lastCast.time = GetTime()
+	else
+		CoAPets.PetLastCast[petGuid] = {spellId = spellId, time = GetTime()}
+	end
+end
+
+---parser: a pet dealt damage or healed with this spell; the first hits of each spell id are checked
+---once, after that it costs a table lookup
+---@param spellId number
+---@param petGuid guid
+---@param petActorName string pet actor name, "petName <ownerName>"
+function CoAPets.CheckPetSpell(spellId, petGuid, petActorName)
+	local checked = CoAPets.HelperChecked[spellId]
+	if (checked == true) then
+		return
+	end
+
+	if (CoAPets.GetHelperParent(spellId)) then
+		CoAPets.HelperChecked[spellId] = true
+		return
+	end
+
+	local spellName = GetSpellInfo(spellId)
+	local petName = petActorName and gsub(petActorName, " <.*", "")
+	if (not spellName or spellName ~= petName) then
+		CoAPets.HelperChecked[spellId] = true --a normal ability name, nothing to do
+		return
+	end
+
+	local lastCast = CoAPets.PetLastCast[petGuid]
+	if (lastCast and lastCast.spellId ~= spellId and GetTime() - lastCast.time <= PET_CAST_MEMORY) then
+		local castName = GetSpellInfo(lastCast.spellId)
+		if (castName and castName ~= spellName and not isTechnicalName(castName)) then
+			local saved = getHelperParents()
+			if (saved) then
+				saved[spellId] = lastCast.spellId
+			end
+			applyHelperName(spellId, lastCast.spellId)
+			CoAPets.HelperChecked[spellId] = true
+			return
+		end
+	end
+
+	checked = (checked or 0) + 1
+	CoAPets.HelperChecked[spellId] = (checked >= MAX_LOOKUPS) or checked
 end
 
 local commFrame = CreateFrame("frame")

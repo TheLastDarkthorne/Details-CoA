@@ -82,6 +82,10 @@
 	---@type petcontainer
 	local petContainer = Details222.PetContainer
 
+	--CoA: pet damage spells named after the pet get the pet ability name (classes\container_pets_coa.lua)
+	local CoAPets = Details222.CoAPets
+	local coaPetSpellChecked = CoAPets and CoAPets.HelperChecked
+
 	local names_cache = {}
 	--damage
 		local damage_cache = setmetatable({}, Details.weaktable)
@@ -770,6 +774,10 @@
 
 		if (not sourceActor) then
 			return
+		end
+
+		if (ownerActor and coaPetSpellChecked and coaPetSpellChecked[spellId] ~= true) then
+			CoAPets.CheckPetSpell(spellId, sourceSerial, sourceActor.nome)
 		end
 
 		---@type actor, actor
@@ -2183,6 +2191,10 @@
 			if (not ownerActor and sourceFlags and sourceSerial ~= "") then --if isn't a pet, add to the cache
 				healing_cache[sourceSerial] = sourceActor
 			end
+		end
+
+		if (ownerActor and coaPetSpellChecked and coaPetSpellChecked[spellId] ~= true) then
+			CoAPets.CheckPetSpell(spellId, sourceSerial, sourceActor.nome)
 		end
 
 		--target
@@ -3749,6 +3761,11 @@ local SPELL_POWER_PAIN = SPELL_POWER_PAIN or (PowerEnum and PowerEnum.Pain) or 1
 					misc_cache[sourceName] = sourceActor
 				end
 			end
+		end
+
+		--CoA: remember what each pet cast last, its damage spell may only carry the pet name
+		if (ownerActor and CoAPets) then
+			CoAPets.OnPetCast(sourceSerial, spellId)
 		end
 
 	--check if this is an item usage

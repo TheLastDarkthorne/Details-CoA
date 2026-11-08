@@ -87,6 +87,11 @@ do
 			rawset(Details.spellcache, spellId, {spellTable.name or spellName, 1, spellTable.icon or spellIcon})
 		end
 
+		--CoA: pet damage spells named after the pet show the pet ability instead (classes\container_pets_coa.lua)
+		if (Details222.CoAPets and Details222.CoAPets.ApplyHelperNames) then
+			Details222.CoAPets.ApplyHelperNames()
+		end
+
 		--user overwrites
 		-- [1] spellid [2] spellname [3] spellicon
 		for index, spellTable in ipairs(Details.savedCustomSpells) do
