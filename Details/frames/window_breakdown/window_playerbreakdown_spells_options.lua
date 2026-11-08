@@ -375,8 +375,9 @@ local createOptionsPanel = function()
                         DetailsSpellBreakdownTab.GetSpellScrollFrame():Refresh()
                     end
                 end,
-                name = "Show Pet Ability Names",
-                desc = "Some pets deal damage with a spell that has the pet's own name, such as the Tentacle of C'Thun, which shows as \"Tentacle of C'Thun (Tentacle of C'Thun)\".\n\nWhen enabled, these spells show the name of the ability the pet cast, such as \"Mental Assault (Tentacle of C'Thun)\". Damage totals are the same either way.\n\nWhen disabled, every spell shows the name the game gives it.",
+                --orange asterisk and tag: custom Conquest of Azeroth feature, not part of the original Details
+                name = "|cFFFF8000*|r Show Pet Ability Names |cFFFF8000[CoA]|r",
+                desc = "|cFFFF8000* Custom Conquest of Azeroth feature, not part of the original Details.|r\n\nSome pets deal damage with a spell that has the pet's own name, such as the Tentacle of C'Thun, which shows as \"Tentacle of C'Thun (Tentacle of C'Thun)\".\n\nWhen enabled, these spells show the name of the ability the pet cast, such as \"Mental Assault (Tentacle of C'Thun)\". Damage totals are the same either way.\n\nWhen disabled, every spell shows the name the game gives it.",
             },
     }
 
