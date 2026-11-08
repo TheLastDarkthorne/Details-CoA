@@ -83,8 +83,17 @@ function SlashCmdList.DETAILS (msg, editbox)
 
 	elseif (command == "coapets") then
 		--CoA: list group-owned summons whose owner couldn't be found (classes\container_pets_coa.lua)
-		if (Details222.CoAPets) then
-			Details222.CoAPets.PrintUnresolved()
+		--/details coapets reset: forget the learned pet ability names
+		local CoAPets = Details222.CoAPets
+		if (CoAPets) then
+			if (rest == "reset") then
+				CoAPets.ResetHelperNames()
+				Details:Msg("CoA pets: learned pet ability names cleared.")
+			else
+				CoAPets.PrintUnresolved()
+				Details:Msg("CoA pet ability names (damage spells named after the pet):")
+				CoAPets.PrintHelperNames()
+			end
 		end
 
 	elseif (command == "classtime" or command == "playedclass") then

@@ -254,16 +254,22 @@ end
 --
 --Some CoA summons deal damage with a helper spell named after the creature itself: the Tentacle of
 --C'Thun channels Mental Assault (801151) and the damage ticks are spell 804999 "Tentacle of C'Thun".
---Details then lists "Tentacle of C'Thun (Tentacle of C'Thun)". When a pet deals damage or heals with
---a spell that has the pet's own name, show it under the ability the same pet cast last, and
---remember that pairing (saved in _detalhes_global) for the next sessions.
+--Details then lists "Tentacle of C'Thun (Tentacle of C'Thun)".
+--
+--For a pet spell named after the pet, every hit votes for the ability the same pet cast in the last
+--few seconds. The helper gets that ability's name and icon only after VOTES_TO_ACCEPT votes with no
+--vote for any other ability. A vote for a second ability means the pet mixes abilities through one
+--helper spell (or the guess was wrong), so the helper keeps its plain name. Accepted pairings are
+--saved in _detalhes_global and keep being checked: a conflicting vote removes them.
+--Only the displayed name and icon change; each spell id keeps its own row and totals.
 
 local GetSpellInfo = _G.GetSpellInfo
 local GetTime = _G.GetTime
 local gsub = string.gsub
 
-local PET_CAST_MEMORY = 20 --seconds a pet's last cast stays usable as the ability name
-local MAX_LOOKUPS = 30 --give up on a spell after this many hits without a usable cast
+local CAST_WINDOW = 3 --seconds a pet's last cast counts as the source of its next hits
+local VOTES_TO_ACCEPT = 3
+local MAX_HITS_WITHOUT_RESULT = 30 --stop checking a spell after this many hits without accepting
 
 --verified in the core: npc_ascension_cultist_summon casts MentalAssault, whose periodic trigger is 804999
 local knownHelperParents = {
@@ -275,11 +281,14 @@ local technicalNames = {"passive", "aura", "visual", "reticle", "proc", "trigger
 
 ---@type table<guid, {spellId: number, time: number}>
 CoAPets.PetLastCast = {}
----spell id -> nil (not checked yet), number of failed lookups, or true (decided)
----@type table<number, number|boolean>
+---spell id -> true when the parser doesn't need to call CheckPetSpell for it anymore
+---@type table<number, boolean>
 CoAPets.HelperChecked = {}
+---spell id -> votes collected this session
+---@type table<number, {votes: table<number, number>, hits: number, rejected: boolean?}>
+CoAPets.HelperVotes = {}
 
-local getHelperParents = function()
+local getSavedParents = function()
 	local db = _G._detalhes_global
 	if (db) then
 		db.coa_pet_spell_parents = db.coa_pet_spell_parents or {}
@@ -287,11 +296,11 @@ local getHelperParents = function()
 	end
 end
 
----return the id of the ability a helper spell should be shown as, or nil
+---return the id of the ability a helper spell is shown as, or nil
 ---@param spellId number
 ---@return number?
 function CoAPets.GetHelperParent(spellId)
-	local saved = getHelperParents()
+	local saved = getSavedParents()
 	return knownHelperParents[spellId] or (saved and saved[spellId])
 end
 
@@ -306,12 +315,17 @@ local isTechnicalName = function(spellName)
 end
 
 ---overwrite the spell cache entry of a helper spell with the name and icon of its ability
----@param helperId number
----@param parentId number
 local applyHelperName = function(helperId, parentId)
 	local parentName, _, parentIcon = GetSpellInfo(parentId)
 	if (parentName and GetSpellInfo(helperId) and Details.spellcache) then
 		rawset(Details.spellcache, helperId, {parentName, 1, parentIcon})
+	end
+end
+
+---drop the spell cache entry so the helper shows its own name again
+local restoreHelperName = function(helperId)
+	if (Details.spellcache) then
+		rawset(Details.spellcache, helperId, nil)
 	end
 end
 
@@ -320,7 +334,7 @@ function CoAPets.ApplyHelperNames()
 	for helperId, parentId in pairs(knownHelperParents) do
 		applyHelperName(helperId, parentId)
 	end
-	local saved = getHelperParents()
+	local saved = getSavedParents()
 	if (saved) then
 		for helperId, parentId in pairs(saved) do
 			applyHelperName(helperId, parentId)
@@ -341,45 +355,127 @@ function CoAPets.OnPetCast(petGuid, spellId)
 	end
 end
 
----parser: a pet dealt damage or healed with this spell; the first hits of each spell id are checked
----once, after that it costs a table lookup
+---the ability this pet's hit votes for, or nil when there's no usable cast
+local getVote = function(spellId, petGuid)
+	local lastCast = CoAPets.PetLastCast[petGuid]
+	if (not lastCast or lastCast.spellId == spellId or GetTime() - lastCast.time > CAST_WINDOW) then
+		return
+	end
+	local castName = GetSpellInfo(lastCast.spellId)
+	if (not castName or castName == GetSpellInfo(spellId) or isTechnicalName(castName)) then
+		return
+	end
+	return lastCast.spellId
+end
+
+---the helper mixes abilities or the guess was wrong: show its own name and stop checking
+local rejectHelper = function(spellId, state)
+	state.rejected = true
+	local saved = getSavedParents()
+	if (saved and saved[spellId]) then
+		saved[spellId] = nil
+	end
+	restoreHelperName(spellId)
+	CoAPets.HelperChecked[spellId] = true
+end
+
+---parser: a pet dealt damage or healed with this spell
 ---@param spellId number
 ---@param petGuid guid
 ---@param petActorName string pet actor name, "petName <ownerName>"
 function CoAPets.CheckPetSpell(spellId, petGuid, petActorName)
-	local checked = CoAPets.HelperChecked[spellId]
-	if (checked == true) then
+	if (CoAPets.HelperChecked[spellId]) then
 		return
 	end
 
-	if (CoAPets.GetHelperParent(spellId)) then
+	if (knownHelperParents[spellId]) then
 		CoAPets.HelperChecked[spellId] = true
 		return
 	end
 
-	local spellName = GetSpellInfo(spellId)
-	local petName = petActorName and gsub(petActorName, " <.*", "")
-	if (not spellName or spellName ~= petName) then
-		CoAPets.HelperChecked[spellId] = true --a normal ability name, nothing to do
-		return
+	local state = CoAPets.HelperVotes[spellId]
+	if (not state) then
+		local spellName = GetSpellInfo(spellId)
+		local petName = petActorName and gsub(petActorName, " <.*", "")
+		if (not spellName or spellName ~= petName) then
+			CoAPets.HelperChecked[spellId] = true --a normal ability name, nothing to do
+			return
+		end
+		state = {votes = {}, hits = 0}
+		CoAPets.HelperVotes[spellId] = state
 	end
 
-	local lastCast = CoAPets.PetLastCast[petGuid]
-	if (lastCast and lastCast.spellId ~= spellId and GetTime() - lastCast.time <= PET_CAST_MEMORY) then
-		local castName = GetSpellInfo(lastCast.spellId)
-		if (castName and castName ~= spellName and not isTechnicalName(castName)) then
-			local saved = getHelperParents()
-			if (saved) then
-				saved[spellId] = lastCast.spellId
+	state.hits = state.hits + 1
+	local vote = getVote(spellId, petGuid)
+	if (vote) then
+		state.votes[vote] = (state.votes[vote] or 0) + 1
+		for castId in pairs(state.votes) do
+			if (castId ~= vote) then
+				rejectHelper(spellId, state)
+				return
 			end
-			applyHelperName(spellId, lastCast.spellId)
-			CoAPets.HelperChecked[spellId] = true
+		end
+		local saved = getSavedParents()
+		if (saved and saved[spellId] and saved[spellId] ~= vote) then
+			rejectHelper(spellId, state)
 			return
+		end
+		if (state.votes[vote] >= VOTES_TO_ACCEPT and not (saved and saved[spellId])) then
+			if (saved) then
+				saved[spellId] = vote
+			end
+			applyHelperName(spellId, vote)
 		end
 	end
 
-	checked = (checked or 0) + 1
-	CoAPets.HelperChecked[spellId] = (checked >= MAX_LOOKUPS) or checked
+	--keep checking accepted pairings, a later conflicting vote removes them; give up on helpers
+	--that never collect enough votes
+	local saved = getSavedParents()
+	if (not (saved and saved[spellId]) and state.hits >= MAX_HITS_WITHOUT_RESULT) then
+		CoAPets.HelperChecked[spellId] = true
+	end
+end
+
+---print the learned pet ability names (slash command: /details coapets)
+function CoAPets.PrintHelperNames()
+	local saved = getSavedParents() or {}
+	local lines = 0
+	for helperId, parentId in pairs(knownHelperParents) do
+		print(string.format("  %s (%d) -> %s (%d), set by hand", GetSpellInfo(helperId) or "?", helperId, GetSpellInfo(parentId) or "?", parentId))
+		lines = lines + 1
+	end
+	for helperId, parentId in pairs(saved) do
+		local state = CoAPets.HelperVotes[helperId]
+		local votes = state and state.votes[parentId] or 0
+		print(string.format("  %s (%d) -> %s (%d), %d votes this session", GetSpellInfo(helperId) or "?", helperId, GetSpellInfo(parentId) or "?", parentId, votes))
+		lines = lines + 1
+	end
+	for helperId, state in pairs(CoAPets.HelperVotes) do
+		if (state.rejected) then
+			print(string.format("  %s (%d): pet uses more than one ability through it, keeps its own name", GetSpellInfo(helperId) or "?", helperId))
+			lines = lines + 1
+		end
+	end
+	if (lines == 0) then
+		print("  none yet")
+	end
+end
+
+---forget every learned pet ability name (slash command: /details coapets reset)
+function CoAPets.ResetHelperNames()
+	local saved = getSavedParents()
+	if (saved) then
+		for helperId in pairs(saved) do
+			restoreHelperName(helperId)
+			saved[helperId] = nil
+		end
+	end
+	for helperId in pairs(CoAPets.HelperVotes) do
+		restoreHelperName(helperId)
+	end
+	wipe(CoAPets.HelperVotes)
+	wipe(CoAPets.HelperChecked)
+	CoAPets.ApplyHelperNames()
 end
 
 local commFrame = CreateFrame("frame")
