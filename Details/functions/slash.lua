@@ -89,10 +89,18 @@ function SlashCmdList.DETAILS (msg, editbox)
 			if (rest == "reset") then
 				CoAPets.ResetHelperNames()
 				Details:Msg("CoA pets: learned pet ability names cleared.")
+			elseif (rest == "names on" or rest == "names off") then
+				--/details coapets names off: show every spell with the name the game gives it
+				CoAPets.SetHelperNamingEnabled(rest == "names on")
+				Details:Msg("CoA pets: pet ability names", rest == "names on" and "enabled." or "disabled, spells show the game's names.")
 			else
 				CoAPets.PrintUnresolved()
-				Details:Msg("CoA pet ability names (damage spells named after the pet):")
-				CoAPets.PrintHelperNames()
+				if (CoAPets.IsHelperNamingEnabled()) then
+					Details:Msg("CoA pet ability names (damage spells named after the pet):")
+					CoAPets.PrintHelperNames()
+				else
+					Details:Msg("CoA pet ability names are disabled, spells show the game's names. Turn them on with: /details coapets names on")
+				end
 			end
 		end
 

@@ -1293,6 +1293,8 @@ local default_global_data = {
 		--pet spells
 		nest_pet_spells_by_name = false,
 		nest_pet_spells_by_caster = true,
+		--CoA: show pet damage spells named after the pet under the pet ability (classes\container_pets_coa.lua)
+		coa_pet_ability_names = true,
 
 		blockcontainer_width = 430,
 		blockcontainer_height = 270,

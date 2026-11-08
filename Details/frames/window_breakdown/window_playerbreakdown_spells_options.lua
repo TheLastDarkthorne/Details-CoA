@@ -1,5 +1,6 @@
 
 local Details = Details
+local addonName, Details222 = ...
 
 ---@type detailsframework
 local DF = DetailsFramework
@@ -358,6 +359,24 @@ local createOptionsPanel = function()
                         DetailsSpellBreakdownOptionsPanel:RefreshOptions()
                     end
                 end}
+            },
+
+            { --CoA: pet damage spells named after the pet show the pet ability (classes\container_pets_coa.lua)
+                type = "toggle",
+                get = function() return Details.breakdown_spell_tab.coa_pet_ability_names ~= false end,
+                set = function(self, fixedparam, value)
+                    local CoAPets = Details222 and Details222.CoAPets
+                    if (CoAPets) then
+                        CoAPets.SetHelperNamingEnabled(value)
+                    else
+                        Details.breakdown_spell_tab.coa_pet_ability_names = value
+                    end
+                    if (DetailsSpellBreakdownTab and DetailsSpellBreakdownTab.GetSpellScrollFrame) then
+                        DetailsSpellBreakdownTab.GetSpellScrollFrame():Refresh()
+                    end
+                end,
+                name = "Show Pet Ability Names",
+                desc = "Some pets deal damage with a spell that has the pet's own name, such as the Tentacle of C'Thun, which shows as \"Tentacle of C'Thun (Tentacle of C'Thun)\".\n\nWhen enabled, these spells show the name of the ability the pet cast, such as \"Mental Assault (Tentacle of C'Thun)\". Damage totals are the same either way.\n\nWhen disabled, every spell shows the name the game gives it.",
             },
     }
 

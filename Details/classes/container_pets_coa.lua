@@ -269,7 +269,7 @@ local gsub = string.gsub
 
 local CAST_WINDOW = 3 --seconds a pet's last cast counts as the source of its next hits
 local VOTES_TO_ACCEPT = 3
-local MAX_HITS_WITHOUT_RESULT = 30 --stop checking a spell after this many hits without accepting
+local MAX_HITS_WITHOUT_VOTES = 60 --stop checking a spell after this many hits without any vote
 
 --verified in the core: npc_ascension_cultist_summon casts MentalAssault, whose periodic trigger is 804999
 local knownHelperParents = {
@@ -314,23 +314,72 @@ local isTechnicalName = function(spellName)
 	return false
 end
 
+---true unless the player turned pet ability names off (spell breakdown options, or /details coapets names off)
+---@return boolean
+function CoAPets.IsHelperNamingEnabled()
+	local settings = Details.breakdown_spell_tab
+	return not settings or settings.coa_pet_ability_names ~= false
+end
+
+---a name the player gave this spell in the Details spell customization, or nil
+local getUserSpellName = function(spellId)
+	local customSpells = Details.savedCustomSpells
+	if (customSpells) then
+		for i = 1, #customSpells do
+			if (customSpells[i][1] == spellId) then
+				return customSpells[i]
+			end
+		end
+	end
+end
+
 ---overwrite the spell cache entry of a helper spell with the name and icon of its ability
 local applyHelperName = function(helperId, parentId)
+	if (not CoAPets.IsHelperNamingEnabled() or getUserSpellName(helperId)) then
+		return
+	end
 	local parentName, _, parentIcon = GetSpellInfo(parentId)
 	if (parentName and GetSpellInfo(helperId) and Details.spellcache) then
 		rawset(Details.spellcache, helperId, {parentName, 1, parentIcon})
 	end
 end
 
----drop the spell cache entry so the helper shows its own name again
+---drop the spell cache entry so the helper shows its own name again (or the player's custom name)
 local restoreHelperName = function(helperId)
 	if (Details.spellcache) then
-		rawset(Details.spellcache, helperId, nil)
+		local userSpell = getUserSpellName(helperId)
+		rawset(Details.spellcache, helperId, userSpell and {userSpell[2], 1, userSpell[3]} or nil)
+	end
+end
+
+---turn pet ability names on or off; off shows every spell with the name the game gives it
+---saved pairings are kept, so turning it back on restores them
+---@param bEnabled boolean
+function CoAPets.SetHelperNamingEnabled(bEnabled)
+	if (Details.breakdown_spell_tab) then
+		Details.breakdown_spell_tab.coa_pet_ability_names = bEnabled and true or false
+	end
+	if (bEnabled) then
+		wipe(CoAPets.HelperChecked) --start checking pet spells again
+		CoAPets.ApplyHelperNames()
+	else
+		for helperId in pairs(knownHelperParents) do
+			restoreHelperName(helperId)
+		end
+		local saved = getSavedParents()
+		if (saved) then
+			for helperId in pairs(saved) do
+				restoreHelperName(helperId)
+			end
+		end
 	end
 end
 
 ---the spell cache gets rebuilt when segments are cleared: put the helper names back
 function CoAPets.ApplyHelperNames()
+	if (not CoAPets.IsHelperNamingEnabled()) then
+		return
+	end
 	for helperId, parentId in pairs(knownHelperParents) do
 		applyHelperName(helperId, parentId)
 	end
@@ -388,7 +437,8 @@ function CoAPets.CheckPetSpell(spellId, petGuid, petActorName)
 		return
 	end
 
-	if (knownHelperParents[spellId]) then
+	--turned off, or set by hand: nothing to learn (turning it back on wipes HelperChecked)
+	if (not CoAPets.IsHelperNamingEnabled() or knownHelperParents[spellId]) then
 		CoAPets.HelperChecked[spellId] = true
 		return
 	end
@@ -428,10 +478,10 @@ function CoAPets.CheckPetSpell(spellId, petGuid, petActorName)
 		end
 	end
 
-	--keep checking accepted pairings, a later conflicting vote removes them; give up on helpers
-	--that never collect enough votes
-	local saved = getSavedParents()
-	if (not (saved and saved[spellId]) and state.hits >= MAX_HITS_WITHOUT_RESULT) then
+	--keep checking accepted pairings, a later conflicting vote removes them; give up only on helpers
+	--that never got a single vote: a long channel ticks many times after its cast, and only the ticks
+	--inside CAST_WINDOW vote, so a helper with votes keeps collecting them over the next casts
+	if (state.hits >= MAX_HITS_WITHOUT_VOTES and next(state.votes) == nil) then
 		CoAPets.HelperChecked[spellId] = true
 	end
 end
