@@ -696,7 +696,7 @@ end
 
 			petContainer.AddPet(petGuid, petName, petFlags, ownerGuid, ownerName, ownerFlags)
 			--hashName is "petName <ownerName>"
-			local hashName, ownerName, ownerGUID, ownerFlags = petContainer.GetOwner(petGuid, petName)
+			local hashName, ownerName, ownerGUID, ownerFlags = petContainer.GetOwner(petGuid, petName, petFlags)
 
 			local petOwnerActorObject
 
@@ -734,7 +734,7 @@ end
 		if (petContainer.IsPetInCache(actorSerial)) then --this is a registered pet
 			--hashName is "petName <ownerName>"
 			--actorSerial: petGuid, actorName: petName
-			local hashName, ownerName, ownerGuid, ownerFlag = petContainer.GetOwner(actorSerial, actorName) --hashName, ownerName, ownerGuid, ownerFlags
+			local hashName, ownerName, ownerGuid, ownerFlag = petContainer.GetOwner(actorSerial, actorName, actorFlags) --hashName, ownerName, ownerGuid, ownerFlags
 
 			if (hashName and ownerName and ownerGuid and ownerGuid ~= actorSerial and ownerFlag) then
 				actorName = hashName
@@ -753,9 +753,10 @@ end
 		--this actor isn't in the pet cache
 		elseif (not petBlackList[actorSerial]) then --check if is a pet
 			--try to find the owner
-			if (actorFlags and bitBand(actorFlags, OBJECT_TYPE_PETGUARDIAN) ~= 0) then
+			--CoA script summons may lack the pet or guardian type bits but still carry the owner's group affiliation
+			if (actorFlags and (bitBand(actorFlags, OBJECT_TYPE_PETGUARDIAN) ~= 0 or (Details222.CoAPets and Details222.CoAPets.IsGroupOwnedUnit(actorSerial, actorFlags)))) then
 				--hashName is "petName <ownerName>"
-				local hashName, ownerName, ownerGuid, ownerFlags = petContainer.GetOwner(actorSerial, actorName) --hashName, ownerName, ownerGuid, ownerFlags
+				local hashName, ownerName, ownerGuid, ownerFlags = petContainer.GetOwner(actorSerial, actorName, actorFlags) --hashName, ownerName, ownerGuid, ownerFlags
 				if (ownerName and ownerGuid) then
 					--don't pass ownerFlags just in case the cached owner happens to be an enemy from last combat, but ally now.
 					local newPetName, ownerObject = petOwnerFound(ownerName, actorSerial, actorName, actorFlags, self, ownerGuid)
@@ -912,6 +913,12 @@ end
 
 	function Details:ClearCCPetsBlackList()
 		Details:Destroy(petBlackList)
+	end
+
+	---let the next combat log event of this unit search for its owner again
+	---@param actorSerial guid
+	function Details:RemoveFromPetBlackList(actorSerial)
+		petBlackList[actorSerial] = nil
 	end
 
 	function actorContainer:FuncaoDeCriacao(tipo)

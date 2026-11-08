@@ -1465,8 +1465,9 @@ function TimeLine:EnemySpellCast(time, token, sourceGUID, sourceName, sourceFlag
 	if sourceFlag then
 		if _bit_band(sourceFlag, 0x00000060) ~= 0 then --is enemy
 			if _bit_band(sourceFlag, 0x00000400) == 0 then --is not player
-				local petInfo = Details.tabela_pets.pets[sourceGUID]
-				if not petInfo or _bit_band(petInfo[3], 0x00000400) == 0 then --isnt a pet or owner isn't a player
+				--Details.tabela_pets was replaced by the pet container; Details:GetPetInfo returns its petdata
+				local petInfo = Details.GetPetInfo and Details:GetPetInfo(sourceGUID)
+				if not petInfo or _bit_band(petInfo.ownerFlags or 0, 0x00000400) == 0 then --isnt a pet or owner isn't a player
 					sourceName = sourceName or GetSpellInfo(spellID or 0) or "--x--x--"
 
 					--spells cast by enemy

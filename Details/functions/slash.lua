@@ -81,6 +81,12 @@ function SlashCmdList.DETAILS (msg, editbox)
 			Details:ShutDownAllInstances()
 		end
 
+	elseif (command == "coapets") then
+		--CoA: list group-owned summons whose owner couldn't be found (classes\container_pets_coa.lua)
+		if (Details222.CoAPets) then
+			Details222.CoAPets.PrintUnresolved()
+		end
+
 	elseif (command == "classtime" or command == "playedclass") then
 		Details.played_class_time = not Details.played_class_time
 		Details:Msg("played class:", Details.played_class_time and "enabled" or "disabled")

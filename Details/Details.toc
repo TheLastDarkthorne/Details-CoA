@@ -152,6 +152,7 @@ classes\container_actors.lua
 classes\container_spells.lua
 classes\container_segments.lua
 classes\container_pets.lua
+classes\container_pets_coa.lua
 
 core\plugins.lua
 core\plugins_toolbar.lua

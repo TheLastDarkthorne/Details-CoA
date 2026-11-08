@@ -2027,12 +2027,13 @@
 			return
 		end
 
-		local found_absorb 
+		local found_absorb, found_index
 
 		for i = 1, #absorbList do
 			local absorb = shield_cache[targetName].absorbList[i]
 			if Details.IsAbsorbSpellSchool(absorb[1], spellSchool) then
 				found_absorb = absorb
+				found_index = i
 				break
 			end
 		end
@@ -2049,15 +2050,17 @@
 		shieldName = found_absorb[5]
 		shieldType = found_absorb[6]
 		-- get the amount of absorb left on this shield and reduce it
-		local absorbAmount = shield_cache[targetName][shieldSpellId][shieldOwnerName]
+		local shieldsOfThisSpell = shield_cache[targetName][shieldSpellId]
+		local absorbAmount = shieldsOfThisSpell and shieldsOfThisSpell[shieldOwnerName] or 0
 
 		-- absorb only consumed partial damage
-		if absorbAmount and absorbAmount > 0 and amount and amount > 0 and amount > absorbAmount then
+		if absorbAmount > 0 and amount and amount > 0 and amount > absorbAmount then
 			amount = amount - absorbAmount
 			shield_cache[targetName][shieldSpellId][shieldOwnerName] = 0
 			shield_cache[targetName].totalAbsorb = math.max(shield_cache[targetName].totalAbsorb - absorbAmount, 0)
 			parser:heal(token, time, shieldOwnerSerial, shieldOwnerName, shieldOwnerFlags, targetSerial, targetName, targetFlags, targetFlags2, shieldSpellId, shieldName, shieldType, absorbAmount, 0, 0, nil, true)
-			table.remove(shield_cache[targetName].absorbList, 1)
+			--remove the shield that was used up, not the first one in the list
+			table.remove(shield_cache[targetName].absorbList, found_index)
 			return parser:heal_absorb(token, time, sourceSerial, sourceName, sourceFlags, targetSerial, targetName, targetFlags, targetFlags2, spellId, spellName, spellSchool, shieldOwnerSerial, shieldOwnerName, shieldOwnerFlags, shieldOwnerFlags2, shieldSpellId, shieldName, shieldType, amount)
 		
 		-- absorb took the full damage, just heal normally
@@ -6214,6 +6217,8 @@ local SPELL_POWER_PAIN = SPELL_POWER_PAIN or (PowerEnum and PowerEnum.Pain) or 1
 		Details:Destroy(misc_cache_pets)
 		Details:Destroy(misc_cache_petsOwners)
 		Details:Destroy(npcid_cache)
+		--pet names are cached by guid, CoA summons (bombs, tentacles) get a new guid on every cast
+		table.wipe(names_cache)
 		Details:Destroy(enemy_cast_cache)
 		Details:Destroy(empower_cache)
 

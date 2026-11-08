@@ -91,6 +91,9 @@ function petContainer.Reset()
 	table.wipe(petContainer.Pets)
 	table.wipe(petContainer.UnitPetCache)
 	table.wipe(petContainer.IgnoredActors)
+	if (Details222.CoAPets) then
+		Details222.CoAPets.Reset()
+	end
 end
 
 function Details.DebugPets()
@@ -306,11 +309,12 @@ end
 
 ---@param petGuid guid
 ---@param petName actorname
+---@param petFlags number? combat log flags of the pet, used to find owners of CoA script summons
 ---@return actorname? petNameWithOwner
 ---@return actorname? ownerName
 ---@return guid? ownerGuid
 ---@return number? ownerFlags
-function petContainer.GetOwner(petGuid, petName)
+function petContainer.GetOwner(petGuid, petName, petFlags)
 	Details222.Profiling.ProfileStart("petContainer.GetOwner")
 
 	--check if this pet is being ignored
@@ -337,8 +341,18 @@ function petContainer.GetOwner(petGuid, petName)
 		return petInfo.hashName, petInfo.ownerName, petInfo.ownerGuid, petInfo.ownerFlags
 	end
 
+	--CoA: summons spawned by server scripts have no SPELL_SUMMON event, find the owner from the
+	--combat log affiliation flags or the owner's announcement (container_pets_coa.lua)
+	--this runs before the tooltip scan as it's cheaper and exact for the player's own units
+	local ownerName, ownerGuid, ownerFlags
+	if (petFlags and Details222.CoAPets) then
+		ownerName, ownerGuid, ownerFlags = Details222.CoAPets.GetOwner(petGuid, petName, petFlags)
+	end
+
 	--attempt to get the pet owner by tooltip scan
-	local ownerName, ownerGuid, ownerFlags = Details222.Pets.GetPetOwner(petGuid, petName)
+	if (not ownerName) then
+		ownerName, ownerGuid, ownerFlags = Details222.Pets.GetPetOwner(petGuid, petName)
+	end
 
 	--if the tooltip scan worked, add the pet into the cache
 	if (ownerName) then
