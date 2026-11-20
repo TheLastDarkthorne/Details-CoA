@@ -11,7 +11,7 @@ The addon still works on a standard 3.3.5 server. The Conquest of Azeroth (CoA) 
   - The Cultist Tentacle of C'Thun
   - Eldritch Command helpers
   - Necromancer pets
-- **Shares pet owners with your group.** Each copy of the addon tells the rest of your party or raid which units belong to its player. For a teammate's summons to count, that teammate must also run this version.
+- **Shares pet owners with your group.** The combat log marks the units you own, so your own summons always count. For a teammate's script summons, the log shows only that the unit belongs to someone in your group, not who. Each copy of this version tells the rest of your party or raid which units belong to its player, so your copy learns the owners from teammates who run it too. For more information, see [Teammates without this version](#teammates-without-this-version).
 - **Shows pet ability names.** Some CoA pets deal damage through helper spells that carry the pet's name, so the breakdown shows entries like "Tentacle of C'Thun (Tentacle of C'Thun)." The addon watches which ability the pet casts right before each hit and shows the real ability instead, for example "Mental Assault (Tentacle of C'Thun)." It accepts a name only after several matching casts, and it rejects a name if casts ever disagree.
 - **Fixes the `tabela_pets` error** in the Details_TimeLine plugin.
 - **Fixes an error in absorb handling** that repeated many times in each fight.
@@ -44,7 +44,17 @@ When the setting is off, every spell shows the name the game gives it.
 
 - The addon can't count damage or healing that the server never writes to the combat log.
 - If one helper spell serves several different abilities, the addon can't split its damage between them, and it keeps the game's name for that spell.
-- A teammate's script summons count only if that teammate runs this version.
+
+### Teammates without this version
+
+If a teammate doesn't run this version, the addon falls back to the original Details method and reads the summon's tooltip for an owner name. If the tooltip doesn't name an owner, then that summon's damage and healing don't count toward the teammate's total.
+
+This gap affects only:
+
+- Summons that CoA spawns from server scripts. Pets that the server summons the normal way, such as a hunter's pet, count for everyone.
+- The summons' damage and healing. Spells that the teammate casts still count.
+
+The original Details has the same gap, so your results are never less accurate than before. To see which group units have no known owner, type `/details coapets`.
 
 ## Credits
 
